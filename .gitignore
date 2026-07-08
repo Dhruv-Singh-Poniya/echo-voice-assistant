@@ -1,0 +1,44 @@
+# ===== Secrets — NEVER commit real keys =====
+.env
+.env.local
+.env.*.local
+backend/.env
+# keep the templates
+!.env.example
+!backend/.env.example
+
+# ===== Python =====
+.venv/
+venv/
+env/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+backend/assistant.db
+backend/sessions.json
+*.db
+*.sqlite3
+
+# ===== Node / frontend =====
+node_modules/
+dist/
+dist-ssr/
+*.local
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ===== OS / editor =====
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ===== Misc =====
+*.log
+.claude/
