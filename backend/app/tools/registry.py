@@ -8,6 +8,9 @@ from __future__ import annotations
 
 from typing import Callable
 
+from .. import recallr_memory as r
+from .. import skills as sk
+from . import app_index as ai
 from . import productivity as p
 from . import system_automation as s
 from . import web_search as w
@@ -22,10 +25,12 @@ _HANDLERS: dict[str, Callable[[dict], str]] = {
     "list_notes": p.list_notes,
     "set_reminder": p.set_reminder,
     "list_reminders": p.list_reminders,
+    "list_memories": r.list_memories,
     "calculate": p.calculate,
     "get_datetime": p.get_datetime,
     "open_application": s.open_application,
     "send_whatsapp": s.send_whatsapp,
+    "send_discord_message": s.send_discord_message,
     "play_youtube": s.play_youtube,
     "media_control": s.media_control,
     "set_volume": s.set_volume,
@@ -33,6 +38,9 @@ _HANDLERS: dict[str, Callable[[dict], str]] = {
     "open_url": s.open_url,
     "get_system_info": s.get_system_info,
     "run_command": s.run_command,
+    "list_installed_apps": ai.list_installed_apps,
+    "save_skill": sk.save_skill,
+    "list_skills": sk.list_skills,
 }
 
 # Schemas advertised to the model. Keep descriptions crisp — the model routes on them.
@@ -112,6 +120,19 @@ TOOL_SCHEMAS: list[dict] = [
         "input_schema": {"type": "object", "properties": {}},
     },
     {
+        "name": "list_memories",
+        "description": "List the user's long-term memories saved by RecallrAI.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "limit": {
+                    "type": "integer",
+                    "description": "Maximum memories to return. Defaults to 10.",
+                }
+            },
+        },
+    },
+    {
         "name": "calculate",
         "description": "Evaluate a basic arithmetic expression (+ - * / % **).",
         "input_schema": {
@@ -129,12 +150,58 @@ TOOL_SCHEMAS: list[dict] = [
     },
     {
         "name": "open_application",
-        "description": "Open a desktop application by friendly name, e.g. 'notepad', 'chrome', 'spotify', 'calculator'.",
+        "description": (
+            "Open ANY application installed on this PC by name — desktop or Microsoft "
+            "Store app. A live index of every installed app is searched with fuzzy "
+            "matching, so just pass what the user said (e.g. 'spotify', 'obs', 'vs code'). "
+            "If unsure what's installed, use list_installed_apps first."
+        ),
         "input_schema": {
             "type": "object",
             "properties": {"name": {"type": "string", "description": "App name to open."}},
             "required": ["name"],
         },
+    },
+    {
+        "name": "list_installed_apps",
+        "description": (
+            "List applications actually installed on this PC, optionally filtered by a "
+            "search term. Use it to check whether an app exists before opening it, or "
+            "when the user asks what apps they have."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "Optional filter, e.g. 'browser' or 'photo'."}
+            },
+        },
+    },
+    {
+        "name": "save_skill",
+        "description": (
+            "Save a learned skill: after you figure out how to do something non-obvious "
+            "(via web_search, run_command, or trial and error), record the working method "
+            "here so you can do it instantly next time instead of re-deriving it."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string", "description": "Short skill name, e.g. 'restart wifi adapter'."},
+                "description": {"type": "string", "description": "One line: what this skill accomplishes."},
+                "triggers": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Phrases the user might say that should invoke this skill.",
+                },
+                "how": {"type": "string", "description": "The exact steps/commands that worked."},
+            },
+            "required": ["name", "how"],
+        },
+    },
+    {
+        "name": "list_skills",
+        "description": "List the skills the assistant has taught itself so far.",
+        "input_schema": {"type": "object", "properties": {}},
     },
     {
         "name": "send_whatsapp",
@@ -147,6 +214,25 @@ TOOL_SCHEMAS: list[dict] = [
             "type": "object",
             "properties": {
                 "contact": {"type": "string", "description": "The contact's name as it appears in WhatsApp."},
+                "message": {"type": "string", "description": "The exact message text to send."},
+            },
+            "required": ["contact", "message"],
+        },
+    },
+    {
+        "name": "send_discord_message",
+        "description": (
+            "Send a Discord direct message or channel message by searching Discord. "
+            "Use this when the user asks to message, text, DM, or send something on Discord. "
+            "Do not use WhatsApp for Discord requests."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "contact": {
+                    "type": "string",
+                    "description": "Discord contact, DM, server, or channel name to search.",
+                },
                 "message": {"type": "string", "description": "The exact message text to send."},
             },
             "required": ["contact", "message"],
