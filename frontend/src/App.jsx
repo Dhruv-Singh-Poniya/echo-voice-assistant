@@ -5,6 +5,7 @@ import {
   sendVoice,
   sendText,
   getDueReminders,
+  getNowPlaying,
   resetConversation,
 } from "./api.js";
 
@@ -16,13 +17,24 @@ const ACTION_LABELS = {
   list_notes: "▸ NOTE.LIST",
   set_reminder: "▸ TIMER.SET",
   list_reminders: "▸ TIMER.LIST",
+  list_memories: "▸ MEMORY.LIST",
   calculate: "▸ MATH.CALC",
   get_datetime: "▸ SYS.CLOCK",
   open_application: "▸ APP.LAUNCH",
+  send_discord_message: "▸ DISCORD.SEND",
+  send_whatsapp: "▸ WHATSAPP.SEND",
+  play_youtube: "▸ YOUTUBE.PLAY",
+  media_control: "▸ MEDIA.CTRL",
+  set_volume: "▸ AUDIO.LEVEL",
+  close_window: "▸ WINDOW.CLOSE",
   open_url: "▸ WEB.OPEN",
   get_system_info: "▸ SYS.INFO",
   run_command: "▸ SHELL.EXEC",
   web_search: "▸ NET.SEARCH",
+  list_installed_apps: "▸ APP.INDEX",
+  save_skill: "▸ SKILL.SAVE",
+  list_skills: "▸ SKILL.LIST",
+  get_now_playing: "▸ MEDIA.NOW",
 };
 
 const STATE_LABEL = {
@@ -33,6 +45,22 @@ const STATE_LABEL = {
 };
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+function summarizeArgs(args = {}) {
+  return Object.entries(args)
+    .filter(([, value]) => value !== undefined && value !== null && value !== "")
+    .map(([key, value]) => `${key}: ${String(value).slice(0, 140)}`)
+    .join(" · ");
+}
+
+function eventStatusLabel(status) {
+  if (status === "pending") return "AWAITING CONFIRM";
+  if (status === "running") return "RUNNING";
+  if (status === "verified") return "VERIFIED";
+  if (status === "needs_verification") return "NEEDS CHECK";
+  if (status === "failed") return "FAILED";
+  return "DONE";
+}
 
 function Reactor({ state, onClick, disabled }) {
   const ticks = Array.from({ length: 60 });
@@ -93,14 +121,18 @@ export default function App() {
   const [status, setStatus] = useState("");
   const [textInput, setTextInput] = useState("");
   const [reminders, setReminders] = useState([]);
+  const [nowPlaying, setNowPlaying] = useState(null);
   const [converse, setConverse] = useState(false);
   const [convListening, setConvListening] = useState(false);
+  const initialPendingConfirmation = Boolean(messages[messages.length - 1]?.pendingConfirmation);
+  const [awaitingConfirmation, setAwaitingConfirmation] = useState(initialPendingConfirmation);
 
   const audioRef = useRef(null);
   const scrollRef = useRef(null);
   const converseRef = useRef(false);
   const runningRef = useRef(false);
   const stopTurnRef = useRef(false);
+  const awaitingConfirmationRef = useRef(initialPendingConfirmation);
 
   useEffect(() => {
     getHealth()
@@ -118,6 +150,25 @@ export default function App() {
       }
     }, 15000);
     return () => clearInterval(id);
+  }, []);
+
+  // Whatever is playing on the PC (any app), for the NOW PLAYING readout.
+  useEffect(() => {
+    let alive = true;
+    const poll = async () => {
+      try {
+        const info = await getNowPlaying();
+        if (alive) setNowPlaying(info?.active ? info : null);
+      } catch {
+        if (alive) setNowPlaying(null);
+      }
+    };
+    poll();
+    const id = setInterval(poll, 5000);
+    return () => {
+      alive = false;
+      clearInterval(id);
+    };
   }, []);
 
   useEffect(() => {
@@ -164,22 +215,123 @@ export default function App() {
     });
   }
 
-  function pushMessage(role, text, actions = []) {
-    setMessages((m) => [...m, { role, text, actions, id: crypto.randomUUID() }]);
+  function pushMessage(role, text, actions = [], toolEvents = [], pendingConfirmation = false) {
+    setMessages((m) => [
+      ...m,
+      {
+        role,
+        text,
+        actions,
+        toolEvents,
+        pendingConfirmation,
+        id: crypto.randomUUID(),
+      },
+    ]);
   }
 
   // Actions that start audio playing through the speakers — which would feed
   // back into the mic during hands-free mode and cause a loop.
   const MEDIA_ACTIONS = ["play_youtube", "open_url"];
 
-  async function handleResult(result) {
+  function setConfirmationPending(value) {
+    awaitingConfirmationRef.current = value;
+    setAwaitingConfirmation(value);
+  }
+
+  async function listenForConfirmation() {
+    if (!awaitingConfirmationRef.current || converseRef.current) return;
+    stopTurnRef.current = false;
+    setConvListening(true);
+    setStatus("listening for yes or no");
+
+    const blob = await listenForSpeech({
+      maxMs: 7000,
+      silenceMs: 650,
+      startTimeoutMs: 6000,
+      threshold: 16,
+      shouldStop: () => stopTurnRef.current || !awaitingConfirmationRef.current,
+    });
+
+    setConvListening(false);
+    if (!blob || !awaitingConfirmationRef.current) {
+      setStatus("say yes or no, or use the buttons");
+      return;
+    }
+
+    setStatus("processing confirmation...");
+    try {
+      const result = await sendVoice(blob);
+      setStatus("");
+      await handleResult(result, { skipAutoConfirmationListen: true });
+    } catch (e) {
+      setStatus("");
+      pushMessage("assistant", "⚠ " + e.message);
+    }
+  }
+
+  function shouldAutoListenForFollowUp(result, options) {
+    if (options.skipAutoFollowUpListen || converseRef.current) return false;
+    if (awaitingConfirmationRef.current || result.pending_confirmation) return false;
+    return result.listen_mode === "follow_up" || result.expects_response === true;
+  }
+
+  async function listenForFollowUp() {
+    if (converseRef.current || awaitingConfirmationRef.current || convListening) return;
+    stopTurnRef.current = false;
+    setConvListening(true);
+    setStatus("listening for your answer");
+
+    const blob = await listenForSpeech({
+      maxMs: 9000,
+      silenceMs: 800,
+      startTimeoutMs: 6500,
+      threshold: 16,
+      shouldStop: () => stopTurnRef.current || converseRef.current || awaitingConfirmationRef.current,
+    });
+
+    setConvListening(false);
+    if (!blob) {
+      setStatus("");
+      return;
+    }
+
+    setBusy(true);
+    setStatus("processing...");
+    try {
+      const result = await sendVoice(blob);
+      setStatus("");
+      await handleResult(result);
+    } catch (e) {
+      setStatus("");
+      pushMessage("assistant", "⚠ " + e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleResult(result, options = {}) {
+    const pending = Boolean(result.pending_confirmation);
     if (result.transcript) pushMessage("user", result.transcript);
-    pushMessage("assistant", result.reply, result.actions);
+    pushMessage(
+      "assistant",
+      result.reply,
+      result.actions,
+      result.tool_events || [],
+      pending
+    );
+    setConfirmationPending(pending);
     if (converseRef.current && (result.actions || []).some((a) => MEDIA_ACTIONS.includes(a))) {
       stopConverse();
       setStatus("hands-free paused — media is playing");
     }
     await playReply(result.audio);
+    if (pending && !options.skipAutoConfirmationListen && !converseRef.current) {
+      await listenForConfirmation();
+      return;
+    }
+    if (shouldAutoListenForFollowUp(result, options)) {
+      await listenForFollowUp();
+    }
   }
 
   // ---- One voice turn: tap once, speak, it auto-sends when you pause ----
@@ -209,13 +361,13 @@ export default function App() {
   }
 
   function onReactorClick() {
+    if (convListening) {
+      stopTurnRef.current = true; // tap again to stop early
+      return;
+    }
     if (busy) return;
     if (converse) {
       stopConverse();
-      return;
-    }
-    if (convListening) {
-      stopTurnRef.current = true; // tap again to stop early
       return;
     }
     singleTurn();
@@ -227,9 +379,15 @@ export default function App() {
     runningRef.current = true;
     try {
       while (converseRef.current) {
+        const confirming = awaitingConfirmationRef.current;
         setConvListening(true);
-        setStatus("listening — speak now");
-        const blob = await listenForSpeech({ shouldStop: () => !converseRef.current });
+        setStatus(confirming ? "listening for yes or no" : "listening — speak now");
+        const blob = await listenForSpeech({
+          ...(confirming
+            ? { maxMs: 7000, silenceMs: 650, startTimeoutMs: 6000, threshold: 16 }
+            : {}),
+          shouldStop: () => !converseRef.current,
+        });
         setConvListening(false);
         if (!converseRef.current) break;
         if (!blob) {
@@ -299,16 +457,24 @@ export default function App() {
 
   async function handleReset() {
     await resetConversation();
+    setConfirmationPending(false);
     setMessages([]);
   }
 
   const hint =
     status ||
+    (awaitingConfirmation
+      ? "say yes or no, tap yes/no, or type your answer"
+      : null) ||
     (orbState === "idle"
       ? converse
         ? "◉ hands-free active — just talk"
         : "◉ tap core, type, or enable hands-free"
       : STATE_LABEL[orbState].toLowerCase());
+
+  const latestPendingMessageId = awaitingConfirmation
+    ? [...messages].reverse().find((m) => m.pendingConfirmation)?.id
+    : null;
 
   return (
     <div className="hud">
@@ -370,13 +536,27 @@ export default function App() {
               <div className="stage-status mono">{hint}</div>
             </div>
 
+            {nowPlaying && (
+              <div className={`now-playing mono ${nowPlaying.status}`}>
+                <span className="np-eq" aria-hidden="true"><i /><i /><i /><i /><i /></span>
+                <div className="np-meta">
+                  <span className="np-label">
+                    {nowPlaying.status === "paused" ? "⏸ PAUSED" : "♪ NOW PLAYING"}
+                    {nowPlaying.app ? ` · ${nowPlaying.app.toUpperCase()}` : ""}
+                  </span>
+                  <span className="np-title" title={nowPlaying.title}>{nowPlaying.title}</span>
+                  {nowPlaying.artist && <span className="np-artist">{nowPlaying.artist}</span>}
+                </div>
+              </div>
+            )}
+
             <div className="readouts mono" aria-hidden="true">
               {[
                 ["MODEL", (model.split(".").pop() || model).toUpperCase()],
                 ["VOICE", "SYNTH ✓"],
+                ["MEMORY", health?.recallrai_enabled ? "RECALLRAI" : "LOCAL"],
                 ["MODE", converse ? "HANDS-FREE" : "MANUAL"],
                 ["ENCRYPT", "AES-256"],
-                ["UPLINK", linkOk ? "SECURE" : "—"],
                 ["STATE", STATE_LABEL[orbState]],
               ].map(([l, v]) => (
                 <div className="ro" key={l}>
@@ -414,6 +594,35 @@ export default function App() {
                       </div>
                     )}
                     <div className="msg">{m.text}</div>
+                    {m.toolEvents?.length > 0 && (
+                      <div className="tool-events mono">
+                        <div className="tool-flow-title">
+                          <span>TASK FLOW</span>
+                          <small>{m.toolEvents.length} STEP{m.toolEvents.length === 1 ? "" : "S"}</small>
+                        </div>
+                        {m.toolEvents.map((event, i) => (
+                          <div key={i} className={`tool-event ${event.status || "done"}`}>
+                            <div className="tool-event-head">
+                              <span>{eventStatusLabel(event.status)}</span>
+                              <b>{ACTION_LABELS[event.name] || event.name}</b>
+                            </div>
+                            {summarizeArgs(event.arguments).length > 0 && (
+                              <div className="tool-args">{summarizeArgs(event.arguments)}</div>
+                            )}
+                            {event.result && <div className="tool-result">RESULT · {event.result}</div>}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {m.pendingConfirmation && m.id === latestPendingMessageId && (
+                      <div className="confirm-box mono">
+                        <div className="confirm-hint">AWAITING VOICE YES/NO</div>
+                        <div className="confirm-row">
+                          <button type="button" onClick={() => runText("yes")} disabled={busy}>YES</button>
+                          <button type="button" onClick={() => runText("no")} disabled={busy}>NO</button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               ))}

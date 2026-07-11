@@ -194,6 +194,31 @@ body {
 .tags { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 7px; }
 .tag { font-size: 10px; letter-spacing: 1px; padding: 3px 8px; border-radius: 2px; color: var(--mint);
   background: rgba(70,245,198,0.08); border: 1px solid rgba(70,245,198,0.3); }
+.tool-events { display: flex; flex-direction: column; gap: 7px; margin-top: 10px; }
+.tool-flow-title { display: flex; align-items: center; justify-content: space-between;
+  color: var(--hud); font-size: 9.5px; letter-spacing: 1.8px; opacity: 0.95; }
+.tool-flow-title small { color: var(--muted); font-size: 9px; letter-spacing: 1.3px; }
+.tool-event { border-left: 2px solid rgba(70,245,198,0.45); padding: 6px 9px;
+  background: rgba(70,245,198,0.045); color: var(--muted); font-size: 10.5px; line-height: 1.45; }
+.tool-event.pending { border-color: rgba(255,184,77,0.7); background: rgba(255,184,77,0.06); }
+.tool-event.verified { border-color: rgba(70,245,198,0.78); background: rgba(70,245,198,0.075); }
+.tool-event.needs_verification { border-color: rgba(255,184,77,0.78); background: rgba(255,184,77,0.075); }
+.tool-event.failed { border-color: rgba(255,93,108,0.78); background: rgba(255,93,108,0.075); }
+.tool-event-head { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.tool-event-head span { color: var(--gold); letter-spacing: 1.5px; font-size: 9.5px; }
+.tool-event-head b { color: var(--mint); letter-spacing: 1px; font-weight: 600; overflow-wrap: anywhere; }
+.tool-args, .tool-result { margin-top: 3px; overflow-wrap: anywhere; }
+.tool-result { color: var(--text); }
+.confirm-box { margin-top: 10px; padding: 9px 10px; border: 1px solid rgba(255,184,77,0.28);
+  background: linear-gradient(90deg, rgba(255,184,77,0.08), rgba(53,230,255,0.035)); }
+.confirm-hint { color: var(--gold); font-size: 9.5px; letter-spacing: 1.7px; margin-bottom: 8px; }
+.confirm-row { display: flex; gap: 8px; }
+.confirm-row button { width: 64px; height: 28px; border: 1px solid var(--hud); border-radius: 3px;
+  background: rgba(53,230,255,0.08); color: var(--hud); font-size: 10px; letter-spacing: 1.5px; cursor: pointer; }
+.confirm-row button:first-child { border-color: var(--mint); color: var(--mint); }
+.confirm-row button:hover:not(:disabled) { background: var(--hud); color: var(--void); }
+.confirm-row button:first-child:hover:not(:disabled) { background: var(--mint); color: var(--void); }
+.confirm-row button:disabled { opacity: 0.35; cursor: default; }
 
 .dots { display: flex; gap: 5px; padding: 4px 0; }
 .dots i { width: 7px; height: 7px; border-radius: 50%; background: var(--hud); box-shadow: 0 0 8px var(--hud); animation: blink 1.3s infinite; }
@@ -215,3 +240,29 @@ body {
 @media (prefers-reduced-motion: reduce) {
   * { animation: none !important; transition: none !important; }
 }
+
+/* ---------------- Now playing (system-wide media session) ---------------- */
+.now-playing {
+  display: flex; align-items: center; gap: 12px;
+  margin: 14px auto 0; padding: 10px 16px;
+  width: min(440px, 90%);
+  border: 1px solid var(--line); border-radius: 4px;
+  background: var(--panel);
+  box-shadow: 0 0 18px rgba(53, 230, 255, 0.06) inset;
+}
+.np-eq { display: flex; align-items: flex-end; gap: 3px; height: 18px; flex: none; }
+.np-eq i { width: 3px; height: 30%; background: var(--hud); border-radius: 1px;
+  animation: np-eq 1.1s ease-in-out infinite; box-shadow: 0 0 6px rgba(53,230,255,.6); }
+.np-eq i:nth-child(2) { animation-delay: .18s; }
+.np-eq i:nth-child(3) { animation-delay: .36s; }
+.np-eq i:nth-child(4) { animation-delay: .09s; }
+.np-eq i:nth-child(5) { animation-delay: .27s; }
+@keyframes np-eq { 0%, 100% { height: 25%; } 50% { height: 100%; } }
+.now-playing.paused .np-eq i { animation: none; height: 30%; opacity: .35; }
+.np-meta { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.np-label { font-size: 9px; letter-spacing: .16em; color: var(--muted); }
+.now-playing.playing .np-label { color: var(--mint); }
+.np-title { font-size: 12.5px; color: var(--text);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.np-artist { font-size: 10px; color: var(--muted);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

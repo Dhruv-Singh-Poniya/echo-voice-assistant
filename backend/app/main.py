@@ -30,6 +30,7 @@ from pydantic import BaseModel
 from . import agent, recallr_memory, voice
 from .config import settings
 from .db import get_conn, init_db
+from .tools import now_playing
 
 
 @asynccontextmanager
@@ -97,6 +98,16 @@ def health() -> dict:
         "recallrai_last_error": recallr_memory.last_error(),
         "problems": problems,
     }
+
+
+@app.get("/api/now-playing")
+def now_playing_status() -> dict:
+    """Current system-wide media session (any app), for the HUD widget.
+
+    Plain ``def`` on purpose: FastAPI runs it in a worker thread, keeping the
+    WinRT call's own event loop away from uvicorn's.
+    """
+    return now_playing.get_sync()
 
 
 @app.post("/api/voice")

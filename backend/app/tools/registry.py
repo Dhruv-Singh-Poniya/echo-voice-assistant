@@ -11,6 +11,7 @@ from typing import Callable
 from .. import recallr_memory as r
 from .. import skills as sk
 from . import app_index as ai
+from . import now_playing as np
 from . import productivity as p
 from . import system_automation as s
 from . import web_search as w
@@ -41,6 +42,7 @@ _HANDLERS: dict[str, Callable[[dict], str]] = {
     "list_installed_apps": ai.list_installed_apps,
     "save_skill": sk.save_skill,
     "list_skills": sk.list_skills,
+    "get_now_playing": np.get_now_playing,
 }
 
 # Schemas advertised to the model. Keep descriptions crisp — the model routes on them.
@@ -201,6 +203,15 @@ TOOL_SCHEMAS: list[dict] = [
     {
         "name": "list_skills",
         "description": "List the skills the assistant has taught itself so far.",
+        "input_schema": {"type": "object", "properties": {}},
+    },
+    {
+        "name": "get_now_playing",
+        "description": (
+            "Find out what song/video is currently playing (or paused) on this PC, "
+            "in any app — Spotify, YouTube in the browser, etc. Use when the user "
+            "asks 'what song is this', 'what's playing', or before controlling media."
+        ),
         "input_schema": {"type": "object", "properties": {}},
     },
     {

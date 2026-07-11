@@ -32,6 +32,11 @@ export async function getDueReminders() {
   return res.json();
 }
 
+export async function getNowPlaying() {
+  const res = await fetch("/api/now-playing");
+  return res.json();
+}
+
 export async function resetConversation() {
   await fetch("/api/reset", {
     method: "POST",
