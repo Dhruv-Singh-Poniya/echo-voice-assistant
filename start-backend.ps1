@@ -4,8 +4,9 @@ Set-Location "$PSScriptRoot/backend"
 if (-not (Test-Path ".venv")) {
     Write-Host "Creating virtual environment..." -ForegroundColor Cyan
     python -m venv .venv
-    ./.venv/Scripts/python.exe -m pip install -r requirements.txt
 }
+Write-Host "Ensuring backend dependencies..." -ForegroundColor Cyan
+./.venv/Scripts/python.exe -m pip install -r requirements.txt
 if (-not (Test-Path ".env")) {
     Write-Host "WARNING: backend/.env not found. Copy .env.example to .env and add your keys." -ForegroundColor Yellow
 }

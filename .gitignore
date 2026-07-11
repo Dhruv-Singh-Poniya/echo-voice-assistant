@@ -17,6 +17,11 @@ __pycache__/
 .pytest_cache/
 backend/assistant.db
 backend/sessions.json
+backend/recallr_sessions.json
+# runtime state the assistant learns/caches per-machine
+backend/app_index.json
+backend/learned_routes.json
+backend/skills/
 *.db
 *.sqlite3
 
@@ -41,4 +46,5 @@ desktop.ini
 
 # ===== Misc =====
 *.log
+.assistant/
 .claude/
