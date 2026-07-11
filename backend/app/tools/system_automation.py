@@ -119,11 +119,16 @@ def open_application(args: dict) -> str:
                 return f"Could not open {name}: {exc}"
         return f"Opening apps isn't supported on this platform ({system})."
 
-    strategies = _WINDOWS_APPS.get(name)
-    if strategies is None:
-        # Unknown app: try it as an executable on PATH, then as a URL protocol.
-        strategies = [("exe", name), ("proto", name)]
+    # Primary path: the dynamic index of everything installed (no hardcoding).
+    from . import app_index
 
+    result = app_index.open_by_name(name)
+    if not result.startswith("I couldn't find"):
+        return result
+
+    # Fallbacks for things without a Start Menu entry: PATH exes, URL protocols,
+    # and the small legacy strategy table.
+    strategies = _WINDOWS_APPS.get(name, [("exe", name), ("proto", name)])
     for strat in strategies:
         kind, value = strat[0], strat[1]
         extra = strat[2] if len(strat) > 2 else None
@@ -133,10 +138,7 @@ def open_application(args: dict) -> str:
         except Exception:
             continue
 
-    return (
-        f"I couldn't find {name} installed on this PC, so I didn't open anything. "
-        f"If {name} is a website, ask me to open the {name} website instead."
-    )
+    return result
 
 
 def send_whatsapp(args: dict) -> str:
@@ -183,8 +185,94 @@ def send_whatsapp(args: dict) -> str:
         return f"Something went wrong while automating WhatsApp: {exc}"
 
     return (
-        f'I sent "{message}" to {contact} on WhatsApp. '
-        f"(If the wrong chat opened, the contact name may not have matched exactly.)"
+        f'Unverified WhatsApp send: I pressed send for "{message}" to {contact}, '
+        "but WhatsApp Desktop does not expose reliable delivery verification to this automation. "
+        "Please check the chat."
+    )
+
+
+def _verify_discord_last_message(pyautogui, pyperclip, expected: str) -> bool:
+    """Best-effort Discord check: Up opens edit mode for your last message."""
+    try:
+        import time
+
+        previous_clipboard = pyperclip.paste()
+        time.sleep(1)
+        pyautogui.press("up")
+        time.sleep(0.35)
+        pyautogui.hotkey("ctrl", "a")
+        time.sleep(0.1)
+        pyautogui.hotkey("ctrl", "c")
+        time.sleep(0.2)
+        copied = (pyperclip.paste() or "").strip()
+        pyautogui.press("esc")
+        if previous_clipboard is not None:
+            pyperclip.copy(previous_clipboard)
+        return copied == expected.strip()
+    except Exception:
+        return False
+
+
+def send_discord_message(args: dict) -> str:
+    """Send a Discord direct message by contact/server-channel search.
+
+    Uses Discord's quick switcher (Ctrl+K), so the contact or channel name must
+    be searchable in the signed-in Discord account.
+    """
+    contact = (args.get("contact") or "").strip()
+    message = (args.get("message") or "").strip()
+    if not contact or not message:
+        return "I need both a Discord contact/channel name and a message to send."
+    if platform.system() != "Windows":
+        return "Discord message automation is only supported on Windows right now."
+
+    try:
+        import time
+
+        import pyautogui
+        import pyperclip
+    except Exception as exc:  # pragma: no cover
+        return f"Discord automation needs extra packages that aren't available: {exc}"
+
+    launched = False
+    for strat in _WINDOWS_APPS.get("discord", []):
+        kind, value = strat[0], strat[1]
+        extra = strat[2] if len(strat) > 2 else None
+        try:
+            if _try_strategy(kind, value, extra):
+                launched = True
+                break
+        except Exception:
+            continue
+    if not launched:
+        return "Discord doesn't appear to be installed or registered on this PC."
+
+    try:
+        pyautogui.FAILSAFE = True
+        time.sleep(6)
+        pyautogui.hotkey("ctrl", "k")          # Discord quick switcher
+        time.sleep(1)
+        pyperclip.copy(contact)
+        pyautogui.hotkey("ctrl", "v")
+        time.sleep(1.5)
+        pyautogui.press("enter")
+        time.sleep(2)
+        pyperclip.copy(message)
+        pyautogui.hotkey("ctrl", "v")
+        time.sleep(0.5)
+        pyautogui.press("enter")
+        verified = _verify_discord_last_message(pyautogui, pyperclip, message)
+    except Exception as exc:
+        return f"Something went wrong while automating Discord: {exc}"
+
+    if verified:
+        return (
+            f'Verified Discord send: "{message}" appeared as your latest sent message '
+            f"after opening {contact}."
+        )
+    return (
+        f'Unverified Discord send: I pressed send for "{message}" after opening {contact}, '
+        "but I could not verify the sent text in Discord. Please check the chat."
     )
 
 
