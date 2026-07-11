@@ -10,9 +10,18 @@ Endpoints
 from __future__ import annotations
 
 import base64
+import sys
 import time
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
+
+# Windows consoles can default to legacy cp1252; a mere print() of a Unicode
+# character would then raise and 500 the request. Force UTF-8, never crash.
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -122,7 +131,7 @@ async def voice_turn(
     t3 = time.perf_counter()
 
     timing = _timing(stt=t1 - t0, agent=t2 - t1, tts=t3 - t2, total=t3 - t0)
-    print(f"[timing] voice → {timing}")
+    print(f"[timing] voice -> {timing}")
 
     return {
         "transcript": transcript,
