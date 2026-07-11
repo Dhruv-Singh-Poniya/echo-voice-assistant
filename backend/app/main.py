@@ -18,7 +18,7 @@ from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from . import agent, voice
+from . import agent, recallr_memory, voice
 from .config import settings
 from .db import get_conn, init_db
 
@@ -58,6 +58,7 @@ class ResetIn(BaseModel):
 @app.get("/api/health")
 def health() -> dict:
     problems = settings.require_keys()
+    problems = problems + recallr_memory.health()
 
     # Also surface provider-specific problems (e.g. Ollama not running / model not pulled).
     from .llm import get_provider
@@ -80,6 +81,11 @@ def health() -> dict:
         "model": model,
         "voice_provider": settings.voice_provider,
         "shell_enabled": settings.allow_shell_commands,
+        "recallrai_enabled": settings.recallrai_enabled,
+        "recallrai_strategy": settings.recallrai_recall_strategy,
+        "recallrai_base_url": settings.recallrai_base_url,
+        "recallrai_forward_proxy": bool(settings.recallrai_forward_proxy_url),
+        "recallrai_last_error": recallr_memory.last_error(),
         "problems": problems,
     }
 
@@ -99,7 +105,16 @@ async def voice_turn(
     transcript = await voice.speech_to_text(audio_bytes, audio.filename or "audio.webm")
     t1 = time.perf_counter()
     if not transcript:
-        return {"transcript": "", "reply": "I didn't catch that. Could you try again?", "actions": [], "audio": None}
+        return {
+            "transcript": "",
+            "reply": "I didn't catch that. Could you try again?",
+            "actions": [],
+            "tool_events": [],
+            "pending_confirmation": False,
+            "listen_mode": "none",
+            "expects_response": False,
+            "audio": None,
+        }
 
     result = agent.chat(session_id, transcript)
     t2 = time.perf_counter()
@@ -113,6 +128,10 @@ async def voice_turn(
         "transcript": transcript,
         "reply": result["reply"],
         "actions": result["actions"],
+        "tool_events": result.get("tool_events", []),
+        "pending_confirmation": result.get("pending_confirmation", False),
+        "listen_mode": result.get("listen_mode", "none"),
+        "expects_response": result.get("expects_response", False),
         "audio": base64.b64encode(reply_audio).decode("ascii"),
         "timing": timing,
     }
@@ -135,6 +154,10 @@ async def text_turn(body: TextIn) -> dict:
         "transcript": body.text,
         "reply": result["reply"],
         "actions": result["actions"],
+        "tool_events": result.get("tool_events", []),
+        "pending_confirmation": result.get("pending_confirmation", False),
+        "listen_mode": result.get("listen_mode", "none"),
+        "expects_response": result.get("expects_response", False),
         "audio": audio_b64,
     }
 

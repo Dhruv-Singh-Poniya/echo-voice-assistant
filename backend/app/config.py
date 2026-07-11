@@ -16,6 +16,13 @@ def _bool(name: str, default: bool = False) -> bool:
     return os.getenv(name, str(default)).strip().lower() in {"1", "true", "yes", "on"}
 
 
+def _int(name: str, default: int) -> int:
+    try:
+        return int(os.getenv(name, str(default)).strip())
+    except ValueError:
+        return default
+
+
 @dataclass(frozen=True)
 class Settings:
     # --- Which brain powers the assistant: "ollama" (local), "anthropic" (cloud), or "gateway" ---
@@ -50,9 +57,22 @@ class Settings:
     elevenlabs_stt_model: str = os.getenv("ELEVENLABS_STT_MODEL", "scribe_v1")
 
     # --- Assistant behaviour ---
-    reply_max_tokens: int = int(os.getenv("REPLY_MAX_TOKENS", "400"))
+    reply_max_tokens: int = _int("REPLY_MAX_TOKENS", 400)
     assistant_name: str = os.getenv("ASSISTANT_NAME", "Jarvis")
     allow_shell_commands: bool = _bool("ALLOW_SHELL_COMMANDS", False)
+
+    # --- RecallrAI long-term memory ---
+    recallrai_enabled: bool = _bool("RECALLRAI_ENABLED", False)
+    recallrai_api_key: str = os.getenv("RECALLRAI_API_KEY", "").strip()
+    recallrai_project_id: str = os.getenv("RECALLRAI_PROJECT_ID", "").strip()
+    recallrai_user_id: str = os.getenv("RECALLRAI_USER_ID", "voice-assistant-user").strip()
+    recallrai_base_url: str = os.getenv("RECALLRAI_BASE_URL", "https://api.recallrai.com").strip().rstrip("/")
+    recallrai_forward_proxy_url: str = os.getenv("RECALLRAI_FORWARD_PROXY_URL", "").strip()
+    recallrai_timeout: int = _int("RECALLRAI_TIMEOUT", 15)
+    recallrai_recall_strategy: str = os.getenv("RECALLRAI_RECALL_STRATEGY", "low_latency").strip().lower()
+    recallrai_auto_process_after_seconds: int = _int("RECALLRAI_AUTO_PROCESS_AFTER_SECONDS", 600)
+    recallrai_last_n_messages: int = _int("RECALLRAI_LAST_N_MESSAGES", 1)
+    recallrai_include_system_prompt: bool = _bool("RECALLRAI_INCLUDE_SYSTEM_PROMPT", False)
 
     # --- Storage ---
     db_path: str = str(BACKEND_DIR / "assistant.db")
@@ -85,6 +105,19 @@ class Settings:
                 problems.append("ELEVENLABS_API_KEY is missing (needed for voice in/out).")
         else:
             problems.append(f"VOICE_PROVIDER must be 'elevenlabs' or 'gateway', got {self.voice_provider!r}.")
+
+        # --- Memory ---
+        if self.recallrai_enabled:
+            if not self.recallrai_api_key:
+                problems.append("RECALLRAI_API_KEY is missing (RECALLRAI_ENABLED=true needs it).")
+            if not self.recallrai_project_id:
+                problems.append("RECALLRAI_PROJECT_ID is missing (RECALLRAI_ENABLED=true needs it).")
+            if not self.recallrai_user_id:
+                problems.append("RECALLRAI_USER_ID must not be empty when RecallrAI is enabled.")
+            if self.recallrai_recall_strategy not in {"low_latency", "balanced", "agentic", "deep"}:
+                problems.append(
+                    "RECALLRAI_RECALL_STRATEGY must be low_latency, balanced, agentic, or deep."
+                )
 
         return problems
 

@@ -28,12 +28,13 @@ just the default; call it whatever you like.)*
 | 🎙️ **Voice in** | Records your mic, auto-stops when you pause, and transcribes it |
 | 🔊 **Voice out** | Replies in a natural voice (ElevenLabs) |
 | 🧠 **Swappable brain** | Local Ollama, Claude, or an AI gateway — one `.env` switch |
-| 🛠️ **Agentic tool use** | The model decides *when* to talk vs. *when* to act (18 tools) |
+| 🛠️ **Agentic tool use** | The model decides *when* to talk vs. *when* to act (20 tools) |
 | 🔎 **Web search** | Live info via DuckDuckGo — no API key |
 | 🎵 **Play & control media** | "Play Shape of You" actually plays it; pause / skip / volume |
 | 🖥️ **Desktop automation** | Open apps (verified installed), open/close windows |
-| 💬 **WhatsApp** | Sends a message to a named contact via WhatsApp Desktop |
+| 💬 **Messaging** | Sends confirmed WhatsApp or Discord messages via desktop automation |
 | ✅ **Productivity** | To-dos, notes, reminders, calculator, date/time |
+| 🧠 **Long-term memory** | Optional RecallrAI memory with low-latency recall and proxy routing |
 | 🗣️ **3 ways to talk** | Tap-once (auto-send on pause), continuous hands-free, or type |
 | 🌌 **Sci-fi HUD** | Reactive arc-reactor, aurora backdrop, live telemetry |
 
@@ -85,6 +86,9 @@ Open `backend/.env`, pick your `LLM_PROVIDER` + `VOICE_PROVIDER`, and add the
 relevant key(s). *(For the fully-free path: `LLM_PROVIDER=ollama` +
 `ollama pull llama3.2:3b`, and an ElevenLabs key for the voice.)*
 
+Optional: set `RECALLRAI_ENABLED=true`, add your RecallrAI API key/project ID,
+and point `RECALLRAI_BASE_URL` at your low-latency forward proxy if you have one.
+
 ### 2. Start the backend (terminal 1)
 ```powershell
 ./start-backend.ps1
@@ -112,6 +116,7 @@ Open **http://localhost:5173**, allow the microphone, tap the reactor core, and 
 - *"Pause the music."* / *"Volume up."* → media control
 - *"Open Notepad."* / *"Close the YouTube window."* → app / window control
 - *"Send a WhatsApp to Alex saying I'm running late."* → sends it
+- *"Message Alex on Discord saying I'm joining in five."* → asks for confirmation, then sends
 - *"Add 'finish the report' to my to-do list."* · *"Remind me to stretch in 20 minutes."*
 - *"What's 18% of 2,450?"* · *"What's today's date?"*
 
@@ -129,6 +134,10 @@ Open **http://localhost:5173**, allow the microphone, tap the reactor core, and 
 | `ELEVENLABS_API_KEY` / `ELEVENLABS_VOICE_ID` | voice out (+ Scribe STT) |
 | `ASSISTANT_NAME` | the name it uses everywhere |
 | `REPLY_MAX_TOKENS` | caps reply length (shorter = faster) |
+| `RECALLRAI_ENABLED` / `RECALLRAI_API_KEY` / `RECALLRAI_PROJECT_ID` | optional RecallrAI long-term memory |
+| `RECALLRAI_RECALL_STRATEGY` | memory recall mode; defaults to `low_latency` for voice speed |
+| `RECALLRAI_BASE_URL` | RecallrAI API endpoint, or a low-latency forward proxy exposing the same API |
+| `RECALLRAI_FORWARD_PROXY_URL` | optional classic HTTP(S) forward proxy for RecallrAI SDK traffic |
 | `ALLOW_SHELL_COMMANDS` | let it run shell commands (⚠️ off by default) |
 
 See [`.env.example`](backend/.env.example) for the full annotated template.
@@ -142,7 +151,7 @@ See [`.env.example`](backend/.env.example) for the full annotated template.
 - **Shell command execution is OFF by default** (`ALLOW_SHELL_COMMANDS=false`).
 - The calculator uses a **safe AST evaluator**, never Python `eval`.
 - App-opening **verifies the app is installed** before launching (honest failures).
-- WhatsApp/media/window tools use OS automation — they act on *your* machine only.
+- WhatsApp/Discord/media/window tools use OS automation — they act on *your* machine only.
 
 ---
 
@@ -151,7 +160,7 @@ See [`.env.example`](backend/.env.example) for the full annotated template.
 - **Backend:** Python, FastAPI, Uvicorn, SQLite (stdlib), httpx
 - **AI (brain):** Ollama (local) · Anthropic Claude · any OpenAI-compatible gateway
 - **Voice:** ElevenLabs (TTS) + Whisper/Scribe (STT)
-- **Automation:** pyautogui / pygetwindow (media, WhatsApp, windows)
+- **Automation:** pyautogui / pygetwindow (media, messaging, windows)
 - **Web search:** DuckDuckGo (`ddgs`) — no key
 - **Frontend:** React 18, Vite, MediaRecorder + Web Audio (silence detection), SVG/CSS HUD
 
@@ -174,7 +183,7 @@ voice-assistant/
 │   │   │   ├── ollama_provider.py
 │   │   │   ├── anthropic_provider.py
 │   │   │   └── gateway_provider.py
-│   │   └── tools/             # everything the assistant can DO (18 tools)
+│   │   └── tools/             # everything the assistant can DO (20 tools)
 │   │       ├── registry.py        # schemas + dispatch
 │   │       ├── web_search.py
 │   │       ├── productivity.py    # todos, notes, reminders, calc, time
@@ -220,7 +229,7 @@ npm run dev
 - **Provider-agnostic architecture** — the LLM and voice are swappable (local Ollama
   ↔ cloud Claude ↔ OpenAI-compatible gateway) behind clean interfaces with a
   normalized message/tool-call format.
-- **LLM agentic tool-use loop** — the model plans, calls 18 typed tools, reads
+- **LLM agentic tool-use loop** — the model plans, calls 20 typed tools, reads
   results, and iterates.
 - **Real desktop automation** — verified app-launching, media control, window
   management, WhatsApp messaging (UI automation).
@@ -236,7 +245,6 @@ npm run dev
 ## 📌 Roadmap ideas
 - Streaming playback (start speaking before the full reply is generated)
 - Wake-word / always-on mode
-- Persistent long-term memory across sessions
 - Spotify playback, email sending, calendar integration
 
 ---
