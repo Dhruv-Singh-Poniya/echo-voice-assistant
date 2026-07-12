@@ -13,6 +13,7 @@ from .. import skills as sk
 from . import app_index as ai
 from . import now_playing as np
 from . import productivity as p
+from . import software as sw
 from . import system_automation as s
 from . import web_search as w
 
@@ -43,6 +44,8 @@ _HANDLERS: dict[str, Callable[[dict], str]] = {
     "save_skill": sk.save_skill,
     "list_skills": sk.list_skills,
     "get_now_playing": np.get_now_playing,
+    "search_software": sw.search_software,
+    "install_software": sw.install_software,
 }
 
 # Schemas advertised to the model. Keep descriptions crisp — the model routes on them.
@@ -213,6 +216,37 @@ TOOL_SCHEMAS: list[dict] = [
             "asks 'what song is this', 'what's playing', or before controlling media."
         ),
         "input_schema": {"type": "object", "properties": {}},
+    },
+    {
+        "name": "search_software",
+        "description": (
+            "Search winget (Windows' package manager) for installable software when "
+            "the user asks to download or install an app that isn't on this PC. "
+            "Returns matching packages with their exact ids — always search before "
+            "installing so you use the right id."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "Software name, e.g. 'obs studio', 'vlc'."}
+            },
+            "required": ["query"],
+        },
+    },
+    {
+        "name": "install_software",
+        "description": (
+            "Install software by its exact winget package id (get it from "
+            "search_software first). The user is asked to confirm before anything "
+            "installs. Prefer ids from the 'winget' source over 'msstore'."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "id": {"type": "string", "description": "Exact package id, e.g. 'OBSProject.OBSStudio'."}
+            },
+            "required": ["id"],
+        },
     },
     {
         "name": "send_whatsapp",

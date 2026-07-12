@@ -35,6 +35,8 @@ const ACTION_LABELS = {
   save_skill: "▸ SKILL.SAVE",
   list_skills: "▸ SKILL.LIST",
   get_now_playing: "▸ MEDIA.NOW",
+  search_software: "▸ PKG.SEARCH",
+  install_software: "▸ PKG.INSTALL",
 };
 
 const STATE_LABEL = {

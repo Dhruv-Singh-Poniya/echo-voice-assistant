@@ -19,7 +19,7 @@ from .llm import get_provider
 from .tools.registry import TOOL_SCHEMAS, dispatch
 
 _MAX_TURNS = 8  # safety cap on tool-use loops per user message
-_CONFIRM_TOOLS = {"send_whatsapp", "send_discord_message", "run_command", "close_window"}
+_CONFIRM_TOOLS = {"send_whatsapp", "send_discord_message", "run_command", "close_window", "install_software"}
 _YES = {"yes", "y", "yeah", "yep", "confirm", "confirmed", "proceed", "do it", "go ahead", "ok", "okay"}
 _NO = {"no", "n", "nope", "cancel", "stop", "don't", "do not", "never mind", "nevermind"}
 _ASK_USER_TOOL = {
@@ -114,7 +114,9 @@ def _system_prompt(recallr_context: str = "", skills_context: str = "") -> str:
         "(run_command can execute it if the user has enabled shell commands). "
         "When a non-obvious method works, call save_skill to record it so you can "
         "do it instantly next time. You can check what's installed on this PC with "
-        "list_installed_apps."
+        "list_installed_apps. If the user wants an app that is NOT installed, offer "
+        "to install it: search_software to find the exact package id, then "
+        "install_software with that id (the user confirms before it runs)."
     )
     if skills_context:
         prompt += f"\n\n{skills_context}"
@@ -169,6 +171,8 @@ def _confirmation_summary(calls: list[dict]) -> str:
             parts.append(f'open {args.get("url", "the website")}')
         elif name == "run_command":
             parts.append(f'run `{args.get("command", "")}`')
+        elif name == "install_software":
+            parts.append(f'install {args.get("id", "the software")} on this PC')
         else:
             parts.append(name)
     return "; ".join(parts)
