@@ -35,6 +35,7 @@ _ROUTE_SAFE_TOOLS = {
     "open_application",
     "open_url",
     "play_youtube",
+    "play_spotify",
     "media_control",
     "set_volume",
     "list_todos",
