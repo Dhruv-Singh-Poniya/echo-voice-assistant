@@ -234,17 +234,60 @@ def _route_volume(lowered: str) -> RoutedIntent | None:
     return None
 
 
+_MEDIA_TARGETS = ("spotify", "brave", "chrome", "edge", "firefox", "vlc", "youtube")
+
+
+def _media_target(lowered: str) -> str:
+    """'pause the spotify music' -> 'spotify'; 'stop the video' -> '' (auto-pick)."""
+    for name in _MEDIA_TARGETS:
+        if name in lowered:
+            return name
+    return ""
+
+
 def _route_media_control(lowered: str) -> RoutedIntent | None:
     if re.search(r"\b(stop|pause)\b.*\b(music|song|video|youtube|playback|audio)\b|\b(stop|pause)\s+(this|it)\b", lowered):
         action = "pause" if "pause" in lowered else "stop"
-        return RoutedIntent(calls=[_call("media_control", {"action": action})], handled=True)
-    if re.search(r"\b(resume|continue|play)\s+(music|song|video|youtube|playback|audio|it)\b", lowered):
+        args = {"action": action}
+        target = _media_target(lowered)
+        if target:
+            args["target"] = target
+        return RoutedIntent(calls=[_call("media_control", args)], handled=True)
+    if re.search(r"\b(resume|continue|play)\s+(music|song|video|youtube|playback|audio|it)\b", lowered) and not re.search(
+        r"\b(?:on|in|via|from)\s+(?:spotify|youtube)\b", lowered
+    ):
+        # "play music" = resume; "play music ON spotify" = a play request, let
+        # the music router pick the service instead.
         return RoutedIntent(calls=[_call("media_control", {"action": "play"})], handled=True)
     if re.search(r"\b(next|skip)\b", lowered):
         return RoutedIntent(calls=[_call("media_control", {"action": "next"})], handled=True)
     if re.search(r"\b(previous|prev|back)\s+(song|track|video)?\b", lowered):
         return RoutedIntent(calls=[_call("media_control", {"action": "previous"})], handled=True)
     return None
+
+
+def play_call(query: str) -> dict:
+    """Pick the right player for a music query.
+
+    Explicit service wins; otherwise prefer Spotify when it's connected
+    (real music app) and fall back to YouTube.
+    """
+    lowered = query.lower()
+    wants_spotify = "spotify" in lowered
+    wants_youtube = "youtube" in lowered or "video" in lowered
+    cleaned = re.sub(r"\b(?:on|in|via|from)\s+(?:spotify|youtube)\b|\b(?:spotify|youtube)\b", "", query, flags=re.I)
+    cleaned = " ".join(cleaned.split()).strip(" ,.-") or query
+
+    if wants_spotify:
+        return _call("play_spotify", {"query": cleaned})
+    if wants_youtube:
+        return _call("play_youtube", {"query": cleaned})
+
+    from .tools import spotify
+
+    if spotify.enabled() and spotify.is_connected():
+        return _call("play_spotify", {"query": cleaned})
+    return _call("play_youtube", {"query": cleaned})
 
 
 def _route_youtube(raw: str, lowered: str) -> RoutedIntent | None:
@@ -254,13 +297,14 @@ def _route_youtube(raw: str, lowered: str) -> RoutedIntent | None:
     query = _clean_media_query(match.group("query"))
     if not query:
         return RoutedIntent(reply="What should I play?", handled=True)
-    if query.lower() in {"a music", "music", "some music", "a song", "song", "something"}:
+    if query.lower() in {"a music", "music", "some music", "a song", "song", "something",
+                         "music on spotify", "spotify", "the music on spotify", "something on spotify"}:
         return RoutedIntent(
             reply="What kind of music would you like to hear?",
             pending={"type": "music_query"},
             handled=True,
         )
-    return RoutedIntent(calls=[_call("play_youtube", {"query": query})], handled=True)
+    return RoutedIntent(calls=[play_call(query)], handled=True)
 
 
 def _clean_media_query(query: str) -> str:

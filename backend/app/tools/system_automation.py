@@ -351,8 +351,14 @@ def set_volume(args: dict) -> str:
 
 
 def media_control(args: dict) -> str:
-    """Control playback (via OS media keys) and system volume (via pycaw)."""
+    """Control playback per media session (targeted), volume via pycaw.
+
+    Session-targeted control means "pause the music" pauses the actual music
+    app instead of blindly toggling whatever Windows considers active — the
+    global media key is only the fallback.
+    """
     action = (args.get("action") or "").strip().lower()
+    target = (args.get("target") or "").strip()
 
     playback = {
         "play": "playpause",
@@ -364,6 +370,12 @@ def media_control(args: dict) -> str:
         "prev": "prevtrack",
     }
     if action in playback:
+        if action != "playpause":
+            from . import now_playing
+
+            result = now_playing.control_sync(action, target)
+            if result is not None:
+                return result
         try:
             import pyautogui
 
