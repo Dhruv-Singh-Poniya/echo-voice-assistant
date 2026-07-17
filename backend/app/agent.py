@@ -119,6 +119,11 @@ def _system_prompt(recallr_context: str = "", skills_context: str = "") -> str:
         "install_software with that id (the user confirms before it runs). "
         "For music: use play_spotify when the user says Spotify (or as the default "
         "when Spotify is connected); use play_youtube for videos or when they say YouTube. "
+        "NEVER pass the user's sentence as the search query — turn their request into a "
+        "real query: 'I want something soothing' -> query like 'soothing acoustic chill playlist'. "
+        "If they say 'play the music' / 'resume' and something is paused, use "
+        "media_control play instead of starting a new song. Remember which service "
+        "they asked for earlier in the conversation. "
         "When pausing/stopping media, pass media_control a target if the user names one "
         "or if multiple things are playing (get_now_playing shows all sessions). "
         "For COMPLEX multi-step requests (research + setup, several dependent actions, "
@@ -473,20 +478,8 @@ def _handle_pending_clarification(session_id: str, user_text: str) -> dict | Non
         ]
         return _run_tool_batch(session_id, messages, calls, source="fast_path")
 
-    if kind == "music_query":
-        query = user_text.strip()
-        if not query:
-            reply = "What kind of music would you like to hear?"
-            messages.append({"role": "assistant", "content": reply, "tool_calls": []})
-            _save_history()
-            recallr_memory.after_turn(session_id, reply)
-            return _response(reply, listen_mode="follow_up")
-
-        _PENDING_CLARIFICATIONS.pop(session_id, None)
-        return _run_tool_batch(
-            session_id, messages, [intent_router.play_call(query)], source="fast_path"
-        )
-
+    # ("music_query" clarifications no longer exist — music goes to the LLM,
+    # which keeps the service and vibe in conversation context.)
     _PENDING_CLARIFICATIONS.pop(session_id, None)
     return None
 

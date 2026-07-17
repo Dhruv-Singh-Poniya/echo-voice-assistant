@@ -204,6 +204,12 @@ def learn_route(user_text: str, calls: list[dict], results: list[str]) -> None:
     arguments = call.get("arguments") or {}
     if not _args_are_self_contained(key, arguments):
         return
+    # Never cache a play with a generic query ("play the music" -> query "music"):
+    # replaying it would loop the same junk search forever.
+    if name in {"play_youtube", "play_spotify"}:
+        query = _normalize(str(arguments.get("query", "")))
+        if query in {"", "music", "song", "songs", "some music", "the music", "a song", "something", "anything"}:
+            return
     with _LOCK:
         routes = _load_routes()
         routes[key] = {"name": name, "arguments": arguments, "learned_at": time.time()}

@@ -169,20 +169,40 @@ def _ensure_device(token: str) -> str | None:
     return chosen.get("id")
 
 
+def _open_spotify_search(query: str) -> str:
+    """Zero-setup fallback: open the Spotify app straight at the search
+    results for this query (spotify: URI scheme). One click and it plays —
+    no Web API key or account setup needed."""
+    import os
+    import urllib.parse
+
+    try:
+        os.startfile(f"spotify:search:{urllib.parse.quote(query)}")  # noqa: S606
+    except OSError:
+        return (
+            f"Spotify doesn't seem to be installed, so I can't open it. "
+            f"Want me to play {query} on YouTube instead?"
+        )
+    return (
+        f"I opened Spotify with search results for {query} — tap the first "
+        "one to play it."
+    )
+
+
 def play_spotify(args: dict) -> str:
     """Tool handler: search Spotify and start the top matching track."""
     query = (args.get("query") or "").strip()
     if not query:
         return "What should I play on Spotify?"
     if not enabled():
-        return (
-            "Spotify isn't set up yet. Add SPOTIFY_CLIENT_ID to backend/.env "
-            "(see backend/app/tools/spotify.py for the 3 steps), then connect it."
-        )
+        # No API key configured — regular-use fallback: open the app at the
+        # results instead of lecturing the user about developer setup.
+        return _open_spotify_search(query)
     if not is_connected():
-        return (
-            "Spotify is almost ready — open http://127.0.0.1:8000/api/spotify/login "
-            "in your browser once and approve access, then ask me again."
+        # Key present but the one-time approval was never done — still be useful.
+        return _open_spotify_search(query) + (
+            " (For full voice auto-play, approve once at "
+            "http://127.0.0.1:8000/api/spotify/login.)"
         )
     token = _access_token()
     if not token:

@@ -122,6 +122,12 @@ def open_application(args: dict) -> str:
     # Primary path: the dynamic index of everything installed (no hardcoding).
     from . import app_index
 
+    # "open youtube" means the website, even though a YouTube Music app may be
+    # installed — spoken web destinations beat fuzzy app matches.
+    if name in app_index.WEBSITES:
+        webbrowser.open(app_index.WEBSITES[name])
+        return f"Opened {name} in the browser."
+
     result = app_index.open_by_name(name)
     if not result.startswith("I couldn't find"):
         return result

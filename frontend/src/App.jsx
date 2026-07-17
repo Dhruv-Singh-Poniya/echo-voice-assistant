@@ -350,7 +350,9 @@ export default function App() {
 
   async function handleResult(result, options = {}) {
     const pending = Boolean(result.pending_confirmation);
-    if (result.transcript) pushMessage("user", result.transcript);
+    // skipTranscript: the ack flow already pushed the user's words — /api/text
+    // echoes them back, and pushing again would duplicate the log entry.
+    if (result.transcript && !options.skipTranscript) pushMessage("user", result.transcript);
     pushMessage(
       "assistant",
       result.reply,
@@ -429,7 +431,7 @@ export default function App() {
       const result = await agentTurnFromBlob(blob);
       if (result) {
         setStatus("");
-        await handleResult(result);
+        await handleResult(result, { skipTranscript: true });
       }
     } catch (e) {
       setStatus("");
@@ -489,7 +491,7 @@ export default function App() {
           const result = await agentTurnFromBlob(blob);
           if (result) {
             setStatus("");
-            await handleResult(result);
+            await handleResult(result, { skipTranscript: true });
           }
         } catch (e) {
           setStatus("");

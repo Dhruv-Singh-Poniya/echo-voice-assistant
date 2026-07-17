@@ -54,9 +54,9 @@ def route(text: str) -> RoutedIntent | None:
     if routed:
         return routed
 
-    routed = _route_youtube(raw, lowered)
-    if routed:
-        return routed
+    # NOTE: music ("play X") is deliberately NOT routed here anymore. Regex
+    # can't understand "play something soothing" or remember which service the
+    # user asked for — the LLM can, and it has the play tools + conversation.
 
     routed = _route_close_window(raw, lowered)
     if routed:
@@ -126,8 +126,6 @@ def _route_multi(raw: str, lowered: str) -> RoutedIntent | None:
         return None
 
     calls = [*first.calls, *second.calls]
-    if first.pending and first.pending.get("type") == "music_query" and second.pending:
-        calls.insert(0, _call("play_youtube", {"query": "music"}))
     reply = second.reply or first.reply
     pending = second.pending or first.pending
     if calls or reply:
@@ -290,21 +288,9 @@ def play_call(query: str) -> dict:
     return _call("play_youtube", {"query": cleaned})
 
 
-def _route_youtube(raw: str, lowered: str) -> RoutedIntent | None:
-    match = re.search(r"^(?:play|put on|start playing)\s+(?P<query>.+)$", raw, flags=re.I)
-    if not match:
-        return None
-    query = _clean_media_query(match.group("query"))
-    if not query:
-        return RoutedIntent(reply="What should I play?", handled=True)
-    if query.lower() in {"a music", "music", "some music", "a song", "song", "something",
-                         "music on spotify", "spotify", "the music on spotify", "something on spotify"}:
-        return RoutedIntent(
-            reply="What kind of music would you like to hear?",
-            pending={"type": "music_query"},
-            handled=True,
-        )
-    return RoutedIntent(calls=[play_call(query)], handled=True)
+# _route_youtube was removed on purpose: "play ..." requests go to the LLM,
+# which understands vibes ("something soothing"), remembers the service the
+# user named, and crafts a real search query instead of echoing the sentence.
 
 
 def _clean_media_query(query: str) -> str:

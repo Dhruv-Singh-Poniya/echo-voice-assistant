@@ -34,6 +34,23 @@ _PS_LIST_APPS = (
 )
 
 
+# Names that mean a WEBSITE when spoken, even if a similarly-named app is
+# installed ("open youtube" must not launch the YouTube Music PWA).
+WEBSITES = {
+    "youtube": "https://www.youtube.com",
+    "google": "https://www.google.com",
+    "gmail": "https://mail.google.com",
+    "github": "https://github.com",
+    "chatgpt": "https://chatgpt.com",
+    "instagram": "https://www.instagram.com",
+    "twitter": "https://twitter.com",
+    "x": "https://x.com",
+    "reddit": "https://www.reddit.com",
+    "amazon": "https://www.amazon.in",
+    "flipkart": "https://www.flipkart.com",
+}
+
+
 def _normalize(text: str) -> str:
     """Lowercase and strip everything but letters/digits/spaces, collapse spaces."""
     text = re.sub(r"[^a-z0-9 ]+", " ", (text or "").lower())
