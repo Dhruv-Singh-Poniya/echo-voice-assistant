@@ -4,6 +4,8 @@ import {
   getHealth,
   sendVoice,
   sendText,
+  transcribeVoice,
+  getAck,
   getDueReminders,
   getNowPlaying,
   resetConversation,
@@ -37,6 +39,8 @@ const ACTION_LABELS = {
   get_now_playing: "▸ MEDIA.NOW",
   search_software: "▸ PKG.SEARCH",
   install_software: "▸ PKG.INSTALL",
+  play_spotify: "▸ SPOTIFY.PLAY",
+  delegate_task: "▸ AGENT.SONNET",
 };
 
 const STATE_LABEL = {
@@ -126,6 +130,7 @@ export default function App() {
   const [nowPlaying, setNowPlaying] = useState(null);
   const [converse, setConverse] = useState(false);
   const [convListening, setConvListening] = useState(false);
+  const [micLevel, setMicLevel] = useState(null);
   const initialPendingConfirmation = Boolean(messages[messages.length - 1]?.pendingConfirmation);
   const [awaitingConfirmation, setAwaitingConfirmation] = useState(initialPendingConfirmation);
 
@@ -135,6 +140,34 @@ export default function App() {
   const runningRef = useRef(false);
   const stopTurnRef = useRef(false);
   const awaitingConfirmationRef = useRef(initialPendingConfirmation);
+  const diagRef = useRef(null);
+
+  // Turn a listen.js diagnostic into a human hint. A silent mic failure is
+  // indistinguishable from a frozen app, so every dead-end gets words.
+  function diagnosticMessage(d) {
+    if (!d) return "";
+    if (d.type === "denied")
+      return "⚠ mic access is blocked — click the mic/camera icon in the address bar and allow it";
+    if (d.type === "no-mic") return "⚠ no working microphone found on this PC";
+    if (d.type === "pending")
+      return "⚠ the mic permission prompt is still waiting — check for a browser popup";
+    if (d.type === "unsupported")
+      return "⚠ this page can't record audio — open the app at http://localhost:5173";
+    if (d.type === "no-speech")
+      return `I didn't hear anything — mic peaked at ${d.peak} (needs above ${d.threshold}). If that stays near 0 while you talk, the wrong microphone is set as Windows default.`;
+    if (d.type === "error") return `⚠ mic error: ${d.message || "unknown"}`;
+    return "";
+  }
+
+  function listenCallbacks() {
+    diagRef.current = null;
+    return {
+      onLevel: (v) => setMicLevel(v),
+      onDiagnostic: (d) => {
+        diagRef.current = d;
+      },
+    };
+  }
 
   useEffect(() => {
     getHealth()
@@ -252,9 +285,11 @@ export default function App() {
       startTimeoutMs: 6000,
       threshold: 16,
       shouldStop: () => stopTurnRef.current || !awaitingConfirmationRef.current,
+      ...listenCallbacks(),
     });
 
     setConvListening(false);
+    setMicLevel(null);
     if (!blob || !awaitingConfirmationRef.current) {
       setStatus("say yes or no, or use the buttons");
       return;
@@ -289,9 +324,11 @@ export default function App() {
       startTimeoutMs: 6500,
       threshold: 16,
       shouldStop: () => stopTurnRef.current || converseRef.current || awaitingConfirmationRef.current,
+      ...listenCallbacks(),
     });
 
     setConvListening(false);
+    setMicLevel(null);
     if (!blob) {
       setStatus("");
       return;
@@ -336,24 +373,64 @@ export default function App() {
     }
   }
 
+  // Speak a short "Got it." in Echo's voice; resolves when it finishes so the
+  // real reply never talks over it.
+  function playAck() {
+    return getAck()
+      .then(
+        (a) =>
+          new Promise((resolve) => {
+            if (!a?.audio) return resolve();
+            const audio = new Audio("data:audio/mpeg;base64," + a.audio);
+            const end = () => resolve();
+            audio.onended = end;
+            audio.onerror = end;
+            audio.play().catch(end);
+          })
+      )
+      .catch(() => {});
+  }
+
+  // Transcribe fast, acknowledge IMMEDIATELY (voice + status line), then run
+  // the slower agent + TTS work. Kills the dead-air "is it frozen?" gap.
+  async function agentTurnFromBlob(blob) {
+    const { transcript } = await transcribeVoice(blob);
+    if (!transcript) {
+      setStatus("I didn't catch that — try again");
+      return null;
+    }
+    pushMessage("user", transcript);
+    setStatus(`✓ heard "${transcript}" — working on it…`);
+    const ackDone = playAck(); // speaks while the agent thinks
+    const result = await sendText(transcript);
+    await ackDone;
+    return result;
+  }
+
   // ---- One voice turn: tap once, speak, it auto-sends when you pause ----
   async function singleTurn() {
     if (busy || convListening) return;
     stopTurnRef.current = false;
     setConvListening(true);
     setStatus("listening — speak now");
-    const blob = await listenForSpeech({ shouldStop: () => stopTurnRef.current });
+    const blob = await listenForSpeech({
+      shouldStop: () => stopTurnRef.current,
+      ...listenCallbacks(),
+    });
     setConvListening(false);
+    setMicLevel(null);
     if (!blob) {
-      setStatus("");
+      setStatus(diagnosticMessage(diagRef.current));
       return;
     }
     setBusy(true);
     setStatus("processing…");
     try {
-      const result = await sendVoice(blob);
-      setStatus("");
-      await handleResult(result);
+      const result = await agentTurnFromBlob(blob);
+      if (result) {
+        setStatus("");
+        await handleResult(result);
+      }
     } catch (e) {
       setStatus("");
       pushMessage("assistant", "⚠ " + e.message);
@@ -389,20 +466,31 @@ export default function App() {
             ? { maxMs: 7000, silenceMs: 650, startTimeoutMs: 6000, threshold: 16 }
             : {}),
           shouldStop: () => !converseRef.current,
+          ...listenCallbacks(),
         });
         setConvListening(false);
+        setMicLevel(null);
         if (!converseRef.current) break;
         if (!blob) {
-          setStatus("");
+          const d = diagRef.current;
+          // A broken mic would loop "LISTENING" forever — stop and say why.
+          if (d && ["denied", "no-mic", "unsupported", "pending"].includes(d.type)) {
+            stopConverse();
+            setStatus(diagnosticMessage(d));
+            break;
+          }
+          setStatus(diagnosticMessage(d));
           await sleep(250);
           continue;
         }
         setBusy(true);
         setStatus("processing…");
         try {
-          const result = await sendVoice(blob);
-          setStatus("");
-          await handleResult(result);
+          const result = await agentTurnFromBlob(blob);
+          if (result) {
+            setStatus("");
+            await handleResult(result);
+          }
         } catch (e) {
           setStatus("");
           pushMessage("assistant", "⚠ " + e.message);
@@ -535,7 +623,10 @@ export default function App() {
 
             <div className="reactor-wrap">
               <Reactor state={orbState} onClick={onReactorClick} disabled={busy} />
-              <div className="stage-status mono">{hint}</div>
+              <div className="stage-status mono">
+                {hint}
+                {convListening && micLevel != null ? ` · MIC ${micLevel}` : ""}
+              </div>
             </div>
 
             {nowPlaying && (

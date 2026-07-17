@@ -27,6 +27,23 @@ export async function sendText(text) {
   return res.json();
 }
 
+// STT only — returns the transcript fast so the UI can acknowledge the
+// command while the (slower) agent + TTS work happens via sendText.
+export async function transcribeVoice(audioBlob) {
+  const form = new FormData();
+  form.append("session_id", SESSION_ID);
+  form.append("audio", audioBlob, "recording.webm");
+  const res = await fetch("/api/transcribe", { method: "POST", body: form });
+  if (!res.ok) throw new Error((await res.text()) || "Transcription failed");
+  return res.json();
+}
+
+// Short spoken "Got it." in the assistant's voice, served from cache.
+export async function getAck() {
+  const res = await fetch("/api/ack");
+  return res.json();
+}
+
 export async function getDueReminders() {
   const res = await fetch("/api/reminders/due");
   return res.json();

@@ -22,6 +22,8 @@ backend/recallr_sessions.json
 backend/app_index.json
 backend/learned_routes.json
 backend/skills/
+backend/spotify_tokens.json
+backend/ack_cache/
 *.db
 *.sqlite3
 
@@ -48,3 +50,4 @@ desktop.ini
 *.log
 .assistant/
 .claude/
+TASKS.md

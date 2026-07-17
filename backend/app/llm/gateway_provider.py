@@ -58,13 +58,19 @@ def _to_tools(tools: list[dict]) -> list[dict]:
 
 
 class GatewayProvider(LLMProvider):
+    def __init__(self, model: str | None = None, max_tokens: int | None = None):
+        # Default: the fast chat model from .env. Pass a model to run the same
+        # provider against a stronger brain (e.g. Claude Sonnet for sub-agents).
+        self.model = model or settings.gateway_chat_model
+        self.max_tokens = max_tokens or settings.reply_max_tokens
+
     def chat(self, system: str, messages: list[dict], tools: list[dict]) -> AssistantTurn:
         body = {
-            "model": settings.gateway_chat_model,
+            "model": self.model,
             "messages": _to_messages(system, messages),
             "tools": _to_tools(tools),
             "tool_choice": "auto",
-            "max_tokens": settings.reply_max_tokens,
+            "max_tokens": self.max_tokens,
         }
         headers = {
             "Authorization": f"Bearer {settings.gateway_api_key}",

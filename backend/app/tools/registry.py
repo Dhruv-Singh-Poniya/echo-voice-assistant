@@ -14,6 +14,7 @@ from . import app_index as ai
 from . import now_playing as np
 from . import productivity as p
 from . import software as sw
+from . import spotify as sp
 from . import system_automation as s
 from . import web_search as w
 
@@ -46,6 +47,7 @@ _HANDLERS: dict[str, Callable[[dict], str]] = {
     "get_now_playing": np.get_now_playing,
     "search_software": sw.search_software,
     "install_software": sw.install_software,
+    "play_spotify": sp.play_spotify,
 }
 
 # Schemas advertised to the model. Keep descriptions crisp — the model routes on them.
@@ -284,10 +286,47 @@ TOOL_SCHEMAS: list[dict] = [
         },
     },
     {
+        "name": "delegate_task",
+        "description": (
+            "Hand a COMPLEX multi-step task to a more powerful agent brain (Claude "
+            "Sonnet) that works through it with tools and reports back — e.g. "
+            "'research X and set it up', tasks needing several dependent steps, or "
+            "anything you tried and couldn't solve. Takes noticeably longer, so do "
+            "NOT use it for simple direct commands you can do yourself. Tell the "
+            "user you're on it before delegating."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "task": {"type": "string", "description": "Full, self-contained task description."},
+                "context": {
+                    "type": "string",
+                    "description": "Optional relevant facts from the conversation the agent needs.",
+                },
+            },
+            "required": ["task"],
+        },
+    },
+    {
+        "name": "play_spotify",
+        "description": (
+            "Play a specific song/artist on SPOTIFY (searches Spotify's catalog and "
+            "starts real playback in the Spotify app). Use when the user mentions "
+            "Spotify, or as the default music player when Spotify is connected."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "Song and/or artist, e.g. 'Blinding Lights The Weeknd'."}
+            },
+            "required": ["query"],
+        },
+    },
+    {
         "name": "play_youtube",
         "description": (
-            "Actually play a song, music, or video on YouTube. Use this whenever the "
-            "user says to PLAY something (e.g. 'play Shape of You', 'play some lofi'). "
+            "Actually play a song, music, or video on YouTube. Use for videos, or "
+            "for music when the user says YouTube or Spotify isn't connected. "
             "It finds the top result and starts playback — do not just open a website."
         ),
         "input_schema": {
@@ -301,9 +340,11 @@ TOOL_SCHEMAS: list[dict] = [
     {
         "name": "media_control",
         "description": (
-            "Control media that is currently playing (YouTube, Spotify, etc.): pause, "
-            "stop, resume/play, skip to next or previous, change volume, or mute. Use "
-            "this to STOP or PAUSE music — do NOT call play_youtube again for that."
+            "Control media playback per app: pause, stop, resume/play, next/previous, "
+            "volume, mute. Targets the RIGHT session — pass target when the user names "
+            "what to control ('pause spotify', 'stop the youtube video'), or when "
+            "several things are playing (check get_now_playing to see sessions). "
+            "Without a target it prefers the music app over browser videos."
         ),
         "input_schema": {
             "type": "object",
@@ -311,8 +352,12 @@ TOOL_SCHEMAS: list[dict] = [
                 "action": {
                     "type": "string",
                     "enum": ["play", "pause", "stop", "next", "previous", "volume_up", "volume_down", "mute"],
-                    "description": "What to do to the currently playing media.",
-                }
+                    "description": "What to do to the media.",
+                },
+                "target": {
+                    "type": "string",
+                    "description": "Optional: which app/title to control, e.g. 'spotify', 'brave', or words from the video title.",
+                },
             },
             "required": ["action"],
         },
@@ -375,6 +420,15 @@ TOOL_SCHEMAS: list[dict] = [
         },
     },
 ]
+
+
+def _delegate_task(args: dict) -> str:
+    from .. import delegation  # lazy: delegation itself imports this registry
+
+    return delegation.delegate_task(args)
+
+
+_HANDLERS["delegate_task"] = _delegate_task
 
 
 def dispatch(name: str, args: dict) -> str:

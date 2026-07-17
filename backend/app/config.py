@@ -43,6 +43,8 @@ class Settings:
         os.getenv("GATEWAY_API_KEY", "").strip() or os.getenv("ELEVENLABS_API_KEY", "").strip()
     )
     gateway_chat_model: str = os.getenv("GATEWAY_CHAT_MODEL", "us.anthropic.claude-sonnet-4-6")
+    # Stronger brain used by delegate_task sub-agents for complex work.
+    gateway_agent_model: str = os.getenv("GATEWAY_AGENT_MODEL", "us.anthropic.claude-sonnet-4-6")
     gateway_stt_model: str = os.getenv("GATEWAY_STT_MODEL", "whisper-1")
     gateway_tts_model: str = os.getenv("GATEWAY_TTS_MODEL", "gpt-4o-mini-tts")
     gateway_tts_voice: str = os.getenv("GATEWAY_TTS_VOICE", "alloy")
@@ -55,6 +57,9 @@ class Settings:
     elevenlabs_voice_id: str = os.getenv("ELEVENLABS_VOICE_ID", "21m00Tcm4TlvDq8ikWAM")
     elevenlabs_tts_model: str = os.getenv("ELEVENLABS_TTS_MODEL", "eleven_multilingual_v2")
     elevenlabs_stt_model: str = os.getenv("ELEVENLABS_STT_MODEL", "scribe_v1")
+
+    # --- Spotify (optional; enables play_spotify) ---
+    spotify_client_id: str = os.getenv("SPOTIFY_CLIENT_ID", "").strip()
 
     # --- Assistant behaviour ---
     reply_max_tokens: int = _int("REPLY_MAX_TOKENS", 400)

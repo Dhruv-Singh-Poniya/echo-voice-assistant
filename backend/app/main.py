@@ -10,6 +10,7 @@ Endpoints
 from __future__ import annotations
 
 import base64
+import random
 import sys
 import time
 from contextlib import asynccontextmanager
@@ -25,12 +26,14 @@ for _stream in (sys.stdout, sys.stderr):
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse, RedirectResponse
 from pydantic import BaseModel
 
 from . import agent, recallr_memory, voice
-from .config import settings
+from .config import BACKEND_DIR, settings
 from .db import get_conn, init_db
 from .tools import now_playing
+from .tools import spotify as spotify_tool
 
 
 @asynccontextmanager
@@ -98,6 +101,66 @@ def health() -> dict:
         "recallrai_last_error": recallr_memory.last_error(),
         "problems": problems,
     }
+
+
+_ACK_PHRASES = ["Got it.", "On it.", "Okay, working on it.", "Sure, one second."]
+_ACK_DIR = BACKEND_DIR / "ack_cache"
+
+
+@app.post("/api/transcribe")
+async def transcribe_only(
+    session_id: str = Form("default"),
+    audio: UploadFile = File(...),
+) -> dict:
+    """STT only — lets the UI show/acknowledge the command before the slow
+    agent + TTS work happens (perceived latency fix)."""
+    _guard_keys()
+    audio_bytes = await audio.read()
+    if not audio_bytes:
+        raise HTTPException(400, "Empty audio upload.")
+    transcript = await voice.speech_to_text(audio_bytes, audio.filename or "audio.webm")
+    return {"transcript": transcript}
+
+
+@app.get("/api/ack")
+async def ack_audio() -> dict:
+    """A short spoken acknowledgment in the assistant's voice. Generated once
+    per phrase via TTS, then served from disk cache — instant."""
+    phrase = random.choice(_ACK_PHRASES)
+    _ACK_DIR.mkdir(exist_ok=True)
+    slug = phrase.lower().replace(" ", "-").replace(".", "").replace(",", "")
+    path = _ACK_DIR / f"{slug}.mp3"
+    if not path.exists():
+        try:
+            path.write_bytes(await voice.text_to_speech(phrase))
+        except Exception:
+            return {"text": phrase, "audio": None}
+    return {"text": phrase, "audio": base64.b64encode(path.read_bytes()).decode("ascii")}
+
+
+@app.get("/api/spotify/login")
+def spotify_login():
+    """One-time browser step: redirect to Spotify's consent page (PKCE)."""
+    if not spotify_tool.enabled():
+        return HTMLResponse(
+            "<h3>Spotify isn't configured.</h3>"
+            "<p>Add <code>SPOTIFY_CLIENT_ID=...</code> to backend/.env "
+            "(create the app at developer.spotify.com/dashboard with redirect URI "
+            "<code>http://127.0.0.1:8000/api/spotify/callback</code>), restart, "
+            "then come back here.</p>"
+        )
+    return RedirectResponse(spotify_tool.begin_auth())
+
+
+@app.get("/api/spotify/callback")
+def spotify_callback(code: str = "", state: str = "", error: str = ""):
+    message = spotify_tool.handle_callback(code, state, error)
+    return HTMLResponse(f"<h3>{message}</h3><p>You can close this tab and talk to Echo.</p>")
+
+
+@app.get("/api/spotify/status")
+def spotify_status() -> dict:
+    return {"enabled": spotify_tool.enabled(), "connected": spotify_tool.is_connected()}
 
 
 @app.get("/api/now-playing")

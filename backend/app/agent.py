@@ -116,7 +116,14 @@ def _system_prompt(recallr_context: str = "", skills_context: str = "") -> str:
         "do it instantly next time. You can check what's installed on this PC with "
         "list_installed_apps. If the user wants an app that is NOT installed, offer "
         "to install it: search_software to find the exact package id, then "
-        "install_software with that id (the user confirms before it runs)."
+        "install_software with that id (the user confirms before it runs). "
+        "For music: use play_spotify when the user says Spotify (or as the default "
+        "when Spotify is connected); use play_youtube for videos or when they say YouTube. "
+        "When pausing/stopping media, pass media_control a target if the user names one "
+        "or if multiple things are playing (get_now_playing shows all sessions). "
+        "For COMPLEX multi-step requests (research + setup, several dependent actions, "
+        "things you couldn't solve directly), call delegate_task to hand it to the "
+        "stronger agent brain — but never for simple commands."
     )
     if skills_context:
         prompt += f"\n\n{skills_context}"
@@ -476,14 +483,9 @@ def _handle_pending_clarification(session_id: str, user_text: str) -> dict | Non
             return _response(reply, listen_mode="follow_up")
 
         _PENDING_CLARIFICATIONS.pop(session_id, None)
-        calls = [
-            {
-                "id": "clarified_play_youtube",
-                "name": "play_youtube",
-                "arguments": {"query": query},
-            }
-        ]
-        return _run_tool_batch(session_id, messages, calls, source="fast_path")
+        return _run_tool_batch(
+            session_id, messages, [intent_router.play_call(query)], source="fast_path"
+        )
 
     _PENDING_CLARIFICATIONS.pop(session_id, None)
     return None
